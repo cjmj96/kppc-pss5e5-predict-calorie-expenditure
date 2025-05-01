@@ -89,7 +89,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo, pd):
     # Read training and test data
     pce_train_df = pd.read_csv("./playground-series-s5e5-files/train.csv", index_col="id")
