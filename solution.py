@@ -47,8 +47,34 @@ def _():
     import matplotlib.ticker as ticker
     import io
     import zipfile
+    import random
     import os
-    return mo, os, pd, plt, sns, ticker, zipfile
+    from sklearn.feature_selection import mutual_info_regression
+    from pandas.api.types import is_numeric_dtype, is_string_dtype
+
+    # For reproducibility
+    random.seed(42)
+
+    # Apply the default theme
+    sns.set_theme(style="ticks", font_scale=0.9, rc={'figure.figsize':(5, 5)})
+    sns.set_style({
+        "axes.labelcolor": "gray",
+        "axes.edgecolor": 'gray',
+        "xtick.color": 'gray',
+        "ytick.color": 'gray'
+    })
+    return (
+        is_numeric_dtype,
+        is_string_dtype,
+        mo,
+        mutual_info_regression,
+        os,
+        pd,
+        plt,
+        sns,
+        ticker,
+        zipfile,
+    )
 
 
 @app.cell(hide_code=True)
@@ -92,7 +118,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo, pd):
     # Read training/testing datasets
     pce_training_df = pd.read_csv("./playground-series-s5e5-files/train.csv", index_col="id")
@@ -175,7 +201,7 @@ def _(mo, pce_testing_df, pce_training_df, pd, plt, sns, ticker):
     # Show the results in different tabs
     mo.ui.tabs({"Data dimensions (Training data set)": mo.ui.text_area(f"Observations: {pce_training_df.shape[0]:,d}, Features: {pce_training_df.shape[1]:,d}"), "Data dimensions (Testing data set)": mo.ui.text_area(f"Observations: {pce_testing_df.shape[0]:,d}, Features: {pce_testing_df.shape[1]:,d}"), "Missing values distribution (Training data set)": p_training, "Missing values distribution (Testing data set)": p_testing}
     )
-    return
+    return (dynamic_axis_formatter,)
 
 
 @app.cell(hide_code=True)
@@ -224,11 +250,11 @@ def _(pce_training_df, pd):
         """
         Validates a DataFrame column against predefined data quality rules and prints 
         the count of valid values using Pandas operations.
-    
+
         Parameters:
             df (pd.DataFrame): Input DataFrame
             column (str): Column name to validate
-    
+
         Raises:
             KeyError: If specified column doesn't exist in the DataFrame
         """
@@ -243,13 +269,161 @@ def _(pce_training_df, pd):
         # Apply validation rule and count valid entries
         validation_condition = VALIDATION_RULES[column](df, column)
         valid_count = validation_condition.sum()  # Sum of True values (True=1, False=0)
-    
+
         # Print formatted results
         print(f"# of valid values in {column} column: {valid_count:,d}")
 
     # Process all columns with progress tracking
     for column in pce_training_df.columns:
         check_expected_ranges(pce_training_df, column)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""##### **Attribute relationship analysis**""")
+    return
+
+
+@app.cell
+def _(mutual_info_regression, pce_training_df, pd, plt, sns):
+    # Filter data by removing rows with at least a missing value
+    pce_training_no_missing_values = pce_training_df.dropna()
+
+    # Create copy of training data and separate features/target
+    X_no_missing = pce_training_no_missing_values.copy()
+    y_no_missing = X_no_missing["Calories"]  # Extract target series
+
+    # Utility functions from Tutorial
+    def make_mi_scores(X, y):
+        for colname in X.select_dtypes(["object", "category"]):
+            X[colname], _ = X[colname].factorize()
+        # All discrete features should now have integer dtypes
+        discrete_features = [pd.api.types.is_integer_dtype(t) for t in X.dtypes]
+        mi_scores = mutual_info_regression(X, y, discrete_features=discrete_features, random_state=0)
+        mi_scores = pd.Series(mi_scores, name="MI Scores", index=X.columns)
+        mi_scores = mi_scores.sort_values(ascending=False)
+        return mi_scores
+    
+
+    mi_scores = make_mi_scores(X_no_missing, y_no_missing)
+    mi_scores = mi_scores.reset_index()
+    mi_scores.rename(columns={'index': 'Feature', 'MI Scores': 'MI_score'}, inplace=True)
+    p = sns.barplot(mi_scores, x = "MI_score", y = 'Feature')
+    # Set title
+    p.set_title('Multiple information scores (training set)', fontdict={'size': 14, 'color': 'grey', "position": (0.50,0)})
+    # Move x label to the left
+    plt.xlabel('MI score',loc="left", color="grey")
+    # Move y label to the bottom
+    plt.ylabel('Feature',loc="bottom", color="grey")
+    # Remove top and right axis
+    sns.despine()
+
+    # Show plot
+    p
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""##### **Features dictionary**""")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo, pd):
+    feature_data = {
+        'feature': [
+            'id',
+            'Sex',
+            'Age',
+            'Height',
+            'Duration',
+            'Heart_Rate',
+            'Body_Temp',
+            'Calories'
+        ],
+        'meaning': [
+            'Unique identifier for each individual record',
+            'Biological sex of the individual (Male/Female)',
+            'Age of the individual in years',
+            'Height measurement in centimeters',
+            'Duration of physical activity in minutes',
+            'Heart rate measured in beats per minute (BPM) during activity',
+            'Body temperature in Celsius during/after activity',
+            'Estimated calories burned (in kilocalories) during activity'
+        ]
+    }
+
+    feature_df = pd.DataFrame(feature_data)
+    mo.plain(feature_df)
+    return
+
+
+@app.cell(hide_code=True)
+def _():
+    ##### **Basic statistics**
+    return
+
+
+@app.cell
+def _(mo, pce_training_df):
+    # Compute statistics for every feature
+    mo.plain(pce_training_df.describe(include="all"))
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""##### **Feature distributions**""")
+    return
+
+
+@app.cell(hide_code=True)
+def _(
+    dynamic_axis_formatter,
+    is_numeric_dtype,
+    is_string_dtype,
+    mo,
+    pce_training_df,
+    plt,
+    sns,
+    ticker,
+):
+    def create_feature_plot(df, column):
+        """Create and return a matplotlib figure for a single feature"""
+        fig, ax = plt.subplots(figsize=(10, 6))
+    
+        quantitative_columns = ["Age", "Height", "Weight", "Duration", "Heart_Rate",
+                              "Body_Temp", "Calories"]
+        qualitative_columns = ["Sex"]
+    
+        if (is_string_dtype(df[column])) and (column in qualitative_columns):
+            if df[column].nunique() >= 7:
+                sns.countplot(y=column, data=df, ax=ax)
+                ax.yaxis.set_major_formatter(ticker.FuncFormatter(dynamic_axis_formatter))
+            else:
+                sns.countplot(x=column, data=df, ax=ax)
+                ax.yaxis.set_major_formatter(ticker.FuncFormatter(dynamic_axis_formatter))
+            
+        elif (is_numeric_dtype(df[column])) and (column in quantitative_columns):
+            sns.violinplot(x=df[column], ax=ax)
+    
+        ax.set_title(f"Distribution of {column}", fontdict={"size": 15, "color": "grey", "position": (0.15, 0)})
+        # Move x label to the left
+        plt.xlabel(column, loc="left", color='grey')
+        # Remove top and right axis
+        sns.despine()
+        return fig  # Return the figure object instead of showing it
+
+    # Create a dictionary of plots
+    plot_dict = {
+        column: create_feature_plot(pce_training_df, column)
+        for column in pce_training_df.columns
+    }
+
+    # Display in tabs - each tab will only show its own plot
+    mo.ui.tabs(plot_dict)
     return
 
 
