@@ -49,7 +49,10 @@ def _():
     import zipfile
     import random
     import os
+    import lightgbm as lgb
     from sklearn.feature_selection import mutual_info_regression
+    from sklearn.model_selection import cross_val_score
+    from sklearn.metrics import root_mean_squared_log_error
     from pandas.api.types import is_numeric_dtype, is_string_dtype
 
     # For reproducibility
@@ -304,7 +307,7 @@ def _(mutual_info_regression, pce_training_df, pd, plt, sns):
         mi_scores = pd.Series(mi_scores, name="MI Scores", index=X.columns)
         mi_scores = mi_scores.sort_values(ascending=False)
         return mi_scores
-    
+
 
     mi_scores = make_mi_scores(X_no_missing, y_no_missing)
     mi_scores = mi_scores.reset_index()
@@ -393,11 +396,11 @@ def _(
     def create_feature_plot(df, column):
         """Create and return a matplotlib figure for a single feature"""
         fig, ax = plt.subplots(figsize=(10, 6))
-    
+
         quantitative_columns = ["Age", "Height", "Weight", "Duration", "Heart_Rate",
                               "Body_Temp", "Calories"]
         qualitative_columns = ["Sex"]
-    
+
         if (is_string_dtype(df[column])) and (column in qualitative_columns):
             if df[column].nunique() >= 7:
                 sns.countplot(y=column, data=df, ax=ax)
@@ -405,13 +408,14 @@ def _(
             else:
                 sns.countplot(x=column, data=df, ax=ax)
                 ax.yaxis.set_major_formatter(ticker.FuncFormatter(dynamic_axis_formatter))
-            
+
         elif (is_numeric_dtype(df[column])) and (column in quantitative_columns):
             sns.violinplot(x=df[column], ax=ax)
-    
+
         ax.set_title(f"Distribution of {column}", fontdict={"size": 15, "color": "grey", "position": (0.15, 0)})
         # Move x label to the left
         plt.xlabel(column, loc="left", color='grey')
+        plt.ylabel('# of observations', loc='bottom', color='grey')
         # Remove top and right axis
         sns.despine()
         return fig  # Return the figure object instead of showing it
@@ -424,6 +428,26 @@ def _(
 
     # Display in tabs - each tab will only show its own plot
     mo.ui.tabs(plot_dict)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""## **Modeling**""")
+    return
+
+
+@app.cell
+def _(pce_training_df):
+    # Select relevant features (scenario 1 with mutual information revelant features)
+    relevant_features_s1 = ["Duration", "Body_Temp", "Heart_Rate"]
+
+    # Extract predictors
+    X_s1 = pce_training_df.drop("Calories", axis=1)
+    print(X_s1.columns)
+
+    # Extract target feature
+    y = pce_training_df.Calories
     return
 
 
